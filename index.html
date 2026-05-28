@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课堂 Boss 战 · 分组答题</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --panel-light: #243044;
+      --accent: #f59e0b;
+      --accent-glow: rgba(245, 158, 11, 0.4);
+      --success: #22c55e;
+      --danger: #ef4444;
+      --info: #3b82f6;
+      --text: #e8edf5;
+      --muted: #8b9cb3;
+      --boss-hp: #a855f7;
+      --radius: 12px;
+      --font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse at 50% 0%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(245, 158, 11, 0.08) 0%, transparent 40%);
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── 入口 / 模式选择 ── */
+    #screen-home {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    #screen-home h1 {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b, #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    #screen-home p { color: var(--muted); margin-bottom: 2rem; max-width: 420px; line-height: 1.6; }
+
+    .mode-cards {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .mode-card {
+      background: var(--panel);
+      border: 2px solid var(--panel-light);
+      border-radius: var(--radius);
+      padding: 2rem 2.5rem;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      min-width: 200px;
+    }
+
+    .mode-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent);
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+
+    .mode-card .icon { font-size: 3rem; margin-bottom: 0.75rem; }
+    .mode-card h2 { font-size: 1.25rem; margin-bottom: 0.35rem; }
+    .mode-card span { color: var(--muted); font-size: 0.9rem; }
+
+    /* ── 通用布局 ── */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.25rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--panel-light);
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .app-header .title { font-weight: 700; font-size: 1.1rem; }
+    .app-header .room-badge {
+      background: var(--panel-light);
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: 0.1em;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: filter 0.15s, transform 0.1s;
+      font-weight: 600;
+    }
+
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary { background: var(--accent); color: #1a1200; }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-success { background: var(--success); color: #052e12; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-ghost { background: var(--panel-light); color: var(--text); }
+    .btn-ghost:hover:not(:disabled) { filter: brightness(1.15); }
+    .btn-sm { padding: 0.35rem 0.65rem; font-size: 0.8rem; }
+
+    /* ── Boss 区域 ── */
+    .boss-arena {
+      padding: 1rem 1.25rem 0.5rem;
+      text-align: center;
+    }
+
+    .timer-bar-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .timer-display {
+      font-size: 1.5rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      min-width: 5ch;
+      color: var(--accent);
+    }
+
+    .timer-display.urgent { color: var(--danger); animation: pulse 0.8s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .boss-container {
+      position: relative;
+      max-width: 280px;
+      margin: 0 auto 0.5rem;
+    }
+
+    .boss-sprite {
+      font-size: 5rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.5));
+      transition: transform 0.3s;
+    }
+
+    .boss-sprite.hit { animation: bossHit 0.4s ease; }
+    .boss-sprite.defeated { animation: bossDefeat 1s forwards; opacity: 0.3; transform: scale(0.8); }
+
+    @keyframes bossHit {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-12px) rotate(-5deg); }
+      75% { transform: translateX(12px) rotate(5deg); }
+    }
+
+    @keyframes bossDefeat {
+      to { transform: translateY(30px) scale(0.5); opacity: 0; }
+    }
+
+    .boss-name { font-size: 1.1rem; font-weight: 700; color: #c4b5fd; margin-bottom: 0.5rem; }
+
+    .hp-bar-wrap {
+      background: var(--panel);
+      border-radius: 999px;
+      height: 22px;
+      overflow: hidden;
+      border: 2px solid var(--panel-light);
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .hp-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7c3aed, #a855f7, #c084fc);
+      border-radius: 999px;
+      transition: width 0.5s ease;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 8px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      min-width: 2.5em;
+    }
+
+  .hp-bar-fill.low { background: linear-gradient(90deg, #dc2626, #ef4444); }
+
+    .damage-float {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #fbbf24;
+      text-shadow: 0 0 8px #f59e0b;
+      animation: floatUp 1s forwards;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50px) scale(1.3); }
+    }
+
+    /* ── 主内容区 ── */
+    .main-content { padding: 1rem 1.25rem 2rem; max-width: 900px; margin: 0 auto; }
+
+    .panel {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--panel-light);
+    }
+
+    .panel h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.35rem; }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--panel-light);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      margin-bottom: 0.75rem;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .form-row > * { flex: 1; min-width: 120px; }
+
+    .question-list { list-style: none; }
+    .question-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--panel-light);
+      gap: 0.5rem;
+    }
+
+    .question-list li:last-child { border-bottom: none; }
+
+    /* ── 小组状态 ── */
+    .groups-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .group-card {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 0.75rem;
+      border: 2px solid var(--panel-light);
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .group-card.active { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+    .group-card.eliminated { opacity: 0.45; }
+
+    .group-card .name { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.35rem; }
+    .group-card .score { font-size: 0.8rem; color: var(--accent); margin-bottom: 0.35rem; }
+    .group-card .hearts { font-size: 1.1rem; letter-spacing: 2px; }
+    .group-card .hearts .lost { opacity: 0.25; filter: grayscale(1); }
+
+    /* ── 当前题目 ── */
+    .current-question {
+      font-size: 1.15rem;
+      font-weight: 600;
+      line-height: 1.5;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: var(--bg);
+      border-radius: 8px;
+      border-left: 4px solid var(--accent);
+    }
+
+    .options-grid {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .option-btn {
+      text-align: left;
+      padding: 0.85rem 1rem;
+      background: var(--bg);
+      border: 2px solid var(--panel-light);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+
+    .option-btn:hover:not(:disabled) {
+      border-color: var(--info);
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .option-btn:disabled { cursor: default; }
+    .option-btn.selected { border-color: var(--info); background: rgba(59, 130, 246, 0.2); }
+    .option-btn.correct { border-color: var(--success); background: rgba(34, 197, 94, 0.2); }
+    .option-btn.wrong { border-color: var(--danger); background: rgba(239, 68, 68, 0.2); }
+
+    .teacher-score-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--panel-light);
+    }
+
+    .teacher-score-row span { color: var(--muted); font-size: 0.85rem; width: 100%; }
+
+    /* ── 学生端 ── */
+    .student-status {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--muted);
+    }
+
+    .student-status .my-group {
+      font-size: 1.2rem;
+      color: var(--accent);
+      font-weight: 700;
+      margin: 0.5rem 0;
+    }
+
+    .waiting-pulse { animation: pulse 1.5s infinite; }
+
+    /* ── 排行榜弹窗 ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 1rem;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal {
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 2rem;
+      max-width: 420px;
+      width: 100%;
+      border: 2px solid var(--accent);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+      text-align: center;
+      animation: modalIn 0.35s ease;
+    }
+
+    @keyframes modalIn {
+      from { transform: scale(0.9); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .modal h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.25rem;
+      color: var(--accent);
+    }
+
+    .modal .subtitle { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+    .leaderboard { list-style: none; text-align: left; }
+    .leaderboard li {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      margin-bottom: 0.4rem;
+      background: var(--bg);
+    }
+
+    .leaderboard li.rank-1 { border: 1px solid #fbbf24; background: rgba(251, 191, 36, 0.1); }
+    .leaderboard li.rank-2 { border: 1px solid #94a3b8; }
+    .leaderboard li.rank-3 { border: 1px solid #b45309; }
+
+    .leaderboard .rank {
+      font-weight: 800;
+      font-size: 1.1rem;
+      min-width: 2ch;
+      color: var(--muted);
+    }
+
+    .leaderboard .rank-1 .rank { color: #fbbf24; }
+    .leaderboard .name { flex: 1; font-weight: 600; }
+    .leaderboard .pts { color: var(--accent); font-weight: 700; }
+
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--panel);
+      border: 1px solid var(--panel-light);
+      padding: 0.6rem 1.2rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      z-index: 500;
+      animation: toastIn 0.3s ease;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translate(-50%, 10px); }
+    }
+
+    .hint-box {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 1rem;
+    }
+
+    .game-phase-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .phase-lobby { background: var(--panel-light); color: var(--muted); }
+    .phase-playing { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+    .phase-ended { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+    @media (max-width: 600px) {
+      .mode-cards { flex-direction: column; }
+      .boss-sprite { font-size: 4rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 首页：选择角色 -->
+  <section id="screen-home">
+    <h1>⚔️ 课堂 Boss 战</h1>
+    <p>教师出题、学生分组抢答。答对 Boss 掉血，答错小组扣血。3 分钟限时，结束后公布排行榜！</p>
+    <div class="mode-cards">
+      <div class="mode-card" id="btn-teacher" role="button" tabindex="0">
+        <div class="icon">👩‍🏫</div>
+        <h2>教师端</h2>
+        <span>创建房间 · 出题 · 控场</span>
+      </div>
+      <div class="mode-card" id="btn-student" role="button" tabindex="0">
+        <div class="icon">🎓</div>
+        <h2>学生端</h2>
+        <span>加入房间 · 小组答题</span>
+      </div>
+    </div>
+    <p style="margin-top: 2rem; font-size: 0.8rem; color: var(--muted);">
+      提示：同一台电脑打开多个浏览器标签页可联机；跨设备时教师可使用「手动判分」。
+    </p>
+  </section>
+
+  <!-- 教师：准备阶段 -->
+  <section id="screen-teacher-setup" class="hidden">
+    <header class="app-header">
+      <span class="title">教师端 · 准备</span>
+      <button class="btn btn-ghost btn-sm" id="teacher-back-home">返回</button>
+    </header>
+    <div class="main-content">
+      <div class="hint-box">
+        ① 设置小组数量与名称 → ② 添加题目 → ③ 创建房间并告知学生房间号 → ④ 开始游戏（3 分钟倒计时）
+      </div>
+      <div class="panel">
+        <h3>房间与小组</h3>
+        <div class="form-row">
+          <div>
+            <label>小组数量</label>
+            <input type="number" id="group-count" min="2" max="12" value="4">
+          </div>
+          <div>
+            <label>Boss 名称</label>
+            <input type="text" id="boss-name-input" value="知识魔王" maxlength="12">
+          </div>
+        </div>
+        <div id="group-names-container"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-groups">刷新小组名称</button>
+      </div>
+      <div class="panel">
+        <h3>题目库</h3>
+        <label>题目</label>
+        <textarea id="q-text" rows="2" placeholder="例如：下列哪个是质数？"></textarea>
+        <label>选项 A / B / C / D</label>
+        <div class="form-row">
+          <input type="text" id="q-a" placeholder="A">
+          <input type="text" id="q-b" placeholder="B">
+        </div>
+        <div class="form-row">
+          <input type="text" id="q-c" placeholder="C">
+          <input type="text" id="q-d" placeholder="D">
+        </div>
+        <label>正确答案</label>
+        <select id="q-correct">
+          <option value="0">A</option>
+          <option value="1">B</option>
+          <option value="2">C</option>
+          <option value="3">D</option>
+        </select>
+        <button class="btn btn-primary" id="btn-add-question">添加题目</button>
+        <ul class="question-list" id="question-list"></ul>
+        <p id="no-questions-hint" style="color: var(--muted); font-size: 0.85rem;">暂无题目，请至少添加 1 道</p>
+      </div>
+      <button class="btn btn-primary" id="btn-create-room" style="width: 100%; padding: 0.85rem; font-size: 1rem;">
+        创建房间
+      </button>
+    </div>
+  </section>
+
+  <!-- 教师：游戏中 -->
+  <section id="screen-teacher-game" class="hidden">
+    <header class="app-header">
+      <span class="title">教师端</span>
+      <span class="room-badge" id="teacher-room-code">----</span>
+      <span class="game-phase-badge phase-lobby" id="teacher-phase-badge">准备中</span>
+      <button class="btn btn-ghost btn-sm" id="teacher-end-early">结束游戏</button>
+    </header>
+    <div class="boss-arena">
+      <div class="timer-bar-wrap">
+        <span style="color: var(--muted); font-size: 0.9rem;">⏱ 剩余时间</span>
+        <span class="timer-display" id="timer-display">03:00</span>
+      </div>
+      <div class="boss-container" id="boss-container">
+        <div class="boss-sprite" id="boss-sprite">👹</div>
+      </div>
+      <div class="boss-name" id="boss-name-display">知识魔王</div>
+      <div class="hp-bar-wrap">
+        <div class="hp-bar-fill" id="boss-hp-bar" style="width: 100%">100%</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="panel" id="teacher-controls-lobby">
+        <p style="margin-bottom: 1rem; color: var(--muted);">等待学生加入后，点击开始游戏</p>
+        <button class="btn btn-success" id="btn-start-game" style="width: 100%; padding: 0.85rem; font-size: 1rem;">
+          ▶ 开始游戏（3 分钟）
+        </button>
+      </div>
+      <div class="panel hidden" id="teacher-controls-play">
+        <h3>当前题目 <span id="q-index-label" style="color: var(--accent);"></span></h3>
+        <div class="current-question" id="teacher-question-text">—</div>
+        <div class="options-grid" id="teacher-options"></div>
+        <div class="teacher-score-row">
+          <span>手动判分（举手抢答 · 点击对应小组）：</span>
+          <div id="teacher-manual-buttons" style="display: flex; flex-wrap: wrap; gap: 0.4rem; width: 100%;"></div>
+        </div>
+        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-primary" id="btn-next-question">下一题</button>
+          <button class="btn btn-ghost" id="btn-reveal-answer">公布答案</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>小组状态</h3>
+        <div class="groups-grid" id="teacher-groups-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 学生：加入 -->
+  <section id="screen-student-join" class="hidden">
+    <header class="app-header">
+      <span class="title">学生端 · 加入</span>
+      <button class="btn btn-ghost btn-sm" id="student-back-home">返回</button>
+    </header>
+    <div class="main-content">
+      <div class="panel">
+        <label>房间号（4 位）</label>
+        <input type="text" id="join-room-code" maxlength="4" placeholder="例如 5827" inputmode="numeric">
+        <label>选择你的小组</label>
+        <select id="join-group-select">
+          <option value="">— 请先输入房间号 —</option>
+        </select>
+        <button class="btn btn-primary" id="btn-join-room" style="width: 100%; margin-top: 0.5rem;">加入游戏</button>
+      </div>
+      <div class="hint-box">
+        加入后请等待教师开始游戏。答题时间内每题只能提交一次。
+      </div>
+    </div>
+  </section>
+
+  <!-- 学生：游戏中 -->
+  <section id="screen-student-game" class="hidden">
+    <header class="app-header">
+      <span class="title">学生端</span>
+      <span class="room-badge" id="student-room-code">----</span>
+      <span id="student-group-label" style="font-size: 0.85rem; color: var(--accent); font-weight: 600;"></span>
+    </header>
+    <div class="boss-arena">
+      <div class="timer-bar-wrap">
+        <span style="color: var(--muted); font-size: 0.9rem;">⏱</span>
+        <span class="timer-display" id="student-timer">03:00</span>
+      </div>
+      <div class="boss-container">
+        <div class="boss-sprite" id="student-boss-sprite">👹</div>
+      </div>
+      <div class="boss-name" id="student-boss-name">知识魔王</div>
+      <div class="hp-bar-wrap">
+        <div class="hp-bar-fill" id="student-boss-hp" style="width: 100%">100%</div>
+      </div>
+      <p style="margin-top: 0.5rem; font-size: 0.9rem;">❤️ 本组生命：<span id="student-hearts">❤️❤️❤️</span></p>
+    </div>
+    <div class="main-content">
+      <div id="student-waiting" class="panel student-status">
+        <p class="waiting-pulse">等待教师开始游戏…</p>
+        <p class="my-group" id="student-wait-group"></p>
+      </div>
+      <div id="student-play" class="panel hidden">
+        <h3>请作答</h3>
+        <div class="current-question" id="student-question-text">—</div>
+        <div class="options-grid" id="student-options"></div>
+        <p id="student-answered-hint" class="hidden" style="margin-top: 1rem; color: var(--muted); text-align: center;">
+          本题已提交，等待结果…
+        </p>
+      </div>
+      <div id="student-eliminated" class="panel student-status hidden">
+        <p>本组生命值已耗尽，仍可观战加油！</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 排行榜弹窗 -->
+  <div class="modal-overlay hidden" id="leaderboard-modal">
+    <div class="modal">
+      <h2>🏆 游戏结束</h2>
+      <p class="subtitle" id="end-reason-text">时间到！</p>
+      <ol class="leaderboard" id="leaderboard-list"></ol>
+      <button class="btn btn-primary" id="btn-close-leaderboard" style="margin-top: 1.25rem; width: 100%;">
+        关闭
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const GAME_DURATION = 180; // 3 分钟
+      const BOSS_MAX_HP = 100;
+      const BOSS_DAMAGE = 10;
+      const GROUP_MAX_LIVES = 3;
+      const SCORE_CORRECT = 100;
+      const STORAGE_PREFIX = 'classroomBoss_';
+
+      let role = null; // 'teacher' | 'student'
+      let roomCode = '';
+      let localQuestions = [];
+      let pollTimer = null;
+      let timerInterval = null;
+      let studentGroupId = null;
+      let studentAnsweredQ = -1;
+      let studentSeenQi = -1;
+      let channel = null;
+
+      // ── 工具函数 ──
+      function $(id) { return document.getElementById(id); }
+
+      function showScreen(id) {
+        document.querySelectorAll('section[id^="screen-"]').forEach(s => s.classList.add('hidden'));
+        $(id).classList.remove('hidden');
+      }
+
+      function toast(msg) {
+        const el = document.createElement('div');
+        el.className = 'toast';
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2500);
+      }
+
+      function genRoomCode() {
+        return String(Math.floor(1000 + Math.random() * 9000));
+      }
+
+      function storageKey(code) { return STORAGE_PREFIX + code; }
+
+      function getState(code) {
+        try {
+          const raw = localStorage.getItem(storageKey(code || roomCode));
+          return raw ? JSON.parse(raw) : null;
+        } catch { return null; }
+      }
+
+      function setState(state) {
+        state.updatedAt = Date.now();
+        localStorage.setItem(storageKey(state.roomCode), JSON.stringify(state));
+        if (channel) channel.postMessage({ type: 'sync', roomCode: state.roomCode });
+      }
+
+      function initChannel(code) {
+        if (channel) channel.close();
+        channel = new BroadcastChannel('bossBattle_' + code);
+        channel.onmessage = (e) => {
+          if (e.data?.type === 'sync' && e.data.roomCode === roomCode) {
+            onStateUpdate();
+          }
+        };
+      }
+
+      function formatTime(sec) {
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      }
+
+      function defaultState(code, groups, questions, bossName) {
+        return {
+          roomCode: code,
+          phase: 'lobby', // lobby | playing | ended
+          bossName: bossName || '知识魔王',
+          bossHp: BOSS_MAX_HP,
+          bossMaxHp: BOSS_MAX_HP,
+          timeLeft: GAME_DURATION,
+          timerStartedAt: null,
+          currentQuestionIndex: 0,
+          answerRevealed: false,
+          questions: questions.map(q => ({ ...q })),
+          groups: groups.map((name, i) => ({
+            id: 'g' + i,
+            name,
+            lives: GROUP_MAX_LIVES,
+            score: 0,
+            correctCount: 0,
+            eliminated: false
+          })),
+          submissions: {}, // `${qIndex}_${groupId}`: { answer, correct, at }
+          endReason: ''
+        };
+      }
+
+      // ── 首页 ──
+      $('btn-teacher').addEventListener('click', () => {
+        role = 'teacher';
+        renderGroupNameInputs();
+        showScreen('screen-teacher-setup');
+      });
+      $('btn-student').addEventListener('click', () => {
+        role = 'student';
+        showScreen('screen-student-join');
+      });
+      $('teacher-back-home').addEventListener('click', goHome);
+      $('student-back-home').addEventListener('click', goHome);
+
+      function goHome() {
+        stopPolling();
+        stopTimer();
+        role = null;
+        roomCode = '';
+        studentGroupId = null;
+        if (channel) { channel.close(); channel = null; }
+        showScreen('screen-home');
+      }
+
+      // ── 教师：小组名称 ──
+      function renderGroupNameInputs() {
+        const n = parseInt($('group-count').value, 10) || 4;
+        const container = $('group-names-container');
+        container.innerHTML = '';
+        for (let i = 0; i < n; i++) {
+          const label = document.createElement('label');
+          label.textContent = '第 ' + (i + 1) + ' 组名称';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'group-name-input';
+          input.value = '第' + (i + 1) + '组';
+          input.dataset.index = i;
+          container.appendChild(label);
+          container.appendChild(input);
+        }
+      }
+
+      $('group-count').addEventListener('change', renderGroupNameInputs);
+      $('btn-refresh-groups').addEventListener('click', renderGroupNameInputs);
+
+      // ── 教师：题目 ──
+      function renderQuestionList() {
+        const ul = $('question-list');
+        ul.innerHTML = '';
+        localQuestions.forEach((q, i) => {
+          const li = document.createElement('li');
+          const opts = ['A', 'B', 'C', 'D'];
+          li.innerHTML = '<span>' + (i + 1) + '. ' + escapeHtml(q.text) +
+            ' <small style="color:var(--muted)">（' + opts[q.correct] + '）</small></span>';
+          const del = document.createElement('button');
+          del.className = 'btn btn-danger btn-sm';
+          del.textContent = '删除';
+          del.onclick = () => {
+            localQuestions.splice(i, 1);
+            renderQuestionList();
+          };
+          li.appendChild(del);
+          ul.appendChild(li);
+        });
+        $('no-questions-hint').classList.toggle('hidden', localQuestions.length > 0);
+      }
+
+      function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      $('btn-add-question').addEventListener('click', () => {
+        const text = $('q-text').value.trim();
+        const options = [$('q-a').value, $('q-b').value, $('q-c').value, $('q-d').value].map(s => s.trim());
+        const correct = parseInt($('q-correct').value, 10);
+        if (!text || options.some(o => !o)) {
+          toast('请填写完整题目和四个选项');
+          return;
+        }
+        localQuestions.push({ text, options, correct });
+        $('q-text').value = '';
+        ['q-a', 'q-b', 'q-c', 'q-d'].forEach(id => $(id).value = '');
+        renderQuestionList();
+        toast('题目已添加');
+      });
+
+      $('btn-create-room').addEventListener('click', () => {
+        if (localQuestions.length === 0) {
+          toast('请至少添加一道题目');
+          return;
+        }
+        const names = [...document.querySelectorAll('.group-name-input')].map(inp => inp.value.trim() || '未命名组');
+        roomCode = genRoomCode();
+        const bossName = $('boss-name-input').value.trim() || '知识魔王';
+        const state = defaultState(roomCode, names, localQuestions, bossName);
+        setState(state);
+        initChannel(roomCode);
+        $('teacher-room-code').textContent = roomCode;
+        $('boss-name-display').textContent = bossName;
+        $('student-boss-name').textContent = bossName;
+        showScreen('screen-teacher-game');
+        renderTeacherGame(state);
+        toast('房间已创建：' + roomCode);
+      });
+
+      // ── 教师：游戏 UI ──
+      function renderTeacherGame(state) {
+        if (!state) return;
+        updateBossUI(state, 'teacher');
+        updateTimerUI(state, 'timer-display');
+        updatePhaseBadge(state);
+
+        const lobby = state.phase === 'lobby';
+        $('teacher-controls-lobby').classList.toggle('hidden', !lobby);
+        $('teacher-controls-play').classList.toggle('hidden', lobby || state.phase === 'ended');
+
+        if (state.phase === 'playing') {
+          renderCurrentQuestion(state, 'teacher');
+          renderManualButtons(state);
+        }
+
+        const grid = $('teacher-groups-grid');
+        grid.innerHTML = '';
+        state.groups.forEach(g => {
+          const card = document.createElement('div');
+          card.className = 'group-card' + (g.eliminated ? ' eliminated' : '');
+          const hearts = renderHearts(g.lives);
+          card.innerHTML = '<div class="name">' + escapeHtml(g.name) + '</div>' +
+            '<div class="score">' + g.score + ' 分 · 答对 ' + g.correctCount + '</div>' +
+            '<div class="hearts">' + hearts + '</div>';
+          grid.appendChild(card);
+        });
+
+        if (state.phase === 'ended') showLeaderboard(state);
+      }
+
+      function renderHearts(lives) {
+        let html = '';
+        for (let i = 0; i < GROUP_MAX_LIVES; i++) {
+          html += i < lives ? '❤️' : '<span class="lost">💔</span>';
+        }
+        return html;
+      }
+
+      function updateBossUI(state, prefix) {
+        const pct = Math.max(0, (state.bossHp / state.bossMaxHp) * 100);
+        const bar = $(prefix === 'teacher' ? 'boss-hp-bar' : 'student-boss-hp');
+        bar.style.width = pct + '%';
+        bar.textContent = Math.ceil(pct) + '%';
+        bar.classList.toggle('low', pct <= 30);
+        $(prefix === 'teacher' ? 'boss-name-display' : 'student-boss-name').textContent = state.bossName;
+        const sprite = $(prefix === 'teacher' ? 'boss-sprite' : 'student-boss-sprite');
+        if (state.bossHp <= 0) sprite.classList.add('defeated');
+        else sprite.classList.remove('defeated');
+      }
+
+      function updateTimerUI(state, elId) {
+        const el = $(elId);
+        el.textContent = formatTime(state.timeLeft);
+        el.classList.toggle('urgent', state.timeLeft <= 30 && state.phase === 'playing');
+      }
+
+      function updatePhaseBadge(state) {
+        const badge = $('teacher-phase-badge');
+        badge.textContent = { lobby: '准备中', playing: '进行中', ended: '已结束' }[state.phase] || state.phase;
+        badge.className = 'game-phase-badge phase-' + (state.phase === 'playing' ? 'playing' : state.phase === 'ended' ? 'ended' : 'lobby');
+      }
+
+      function renderCurrentQuestion(state, mode) {
+        const qi = state.currentQuestionIndex;
+        const q = state.questions[qi];
+        if (!q) return;
+
+        const textEl = $(mode === 'teacher' ? 'teacher-question-text' : 'student-question-text');
+        const optsEl = $(mode === 'teacher' ? 'teacher-options' : 'student-options');
+        textEl.textContent = q.text;
+        if (mode === 'teacher') $('q-index-label').textContent = '(' + (qi + 1) + '/' + state.questions.length + ')';
+
+        const labels = ['A', 'B', 'C', 'D'];
+        optsEl.innerHTML = '';
+        q.options.forEach((opt, i) => {
+          const btn = document.createElement('button');
+          btn.className = 'option-btn';
+          btn.textContent = labels[i] + '. ' + opt;
+          if (mode === 'teacher') {
+            btn.disabled = true;
+            if (state.answerRevealed) {
+              if (i === q.correct) btn.classList.add('correct');
+            }
+          } else {
+            btn.onclick = () => submitStudentAnswer(state, i, btn);
+            if (studentAnsweredQ === qi) {
+              btn.disabled = true;
+              const sub = getSubmission(state, qi, studentGroupId);
+              if (sub) {
+                btn.classList.add(sub.correct ? 'correct' : 'wrong');
+                if (i === q.correct) btn.classList.add('correct');
+              }
+            }
+            if (state.answerRevealed) {
+              btn.disabled = true;
+              if (i === q.correct) btn.classList.add('correct');
+            }
+          }
+          optsEl.appendChild(btn);
+        });
+      }
+
+      function getSubmission(state, qIndex, groupId) {
+        return state.submissions[qIndex + '_' + groupId];
+      }
+
+      function renderManualButtons(state) {
+        const wrap = $('teacher-manual-buttons');
+        wrap.innerHTML = '';
+        const qi = state.currentQuestionIndex;
+        state.groups.forEach(g => {
+          if (g.eliminated) return;
+          const sub = getSubmission(state, qi, g.id);
+          const ok = document.createElement('button');
+          ok.className = 'btn btn-success btn-sm';
+          ok.textContent = g.name + ' ✓';
+          ok.disabled = !!sub;
+          ok.onclick = () => applyAnswer(state, g.id, true, true);
+
+          const bad = document.createElement('button');
+          bad.className = 'btn btn-danger btn-sm';
+          bad.textContent = g.name + ' ✗';
+          bad.disabled = !!sub;
+          bad.onclick = () => applyAnswer(state, g.id, false, true);
+
+          wrap.appendChild(ok);
+          wrap.appendChild(bad);
+        });
+      }
+
+      function bossHitAnim() {
+        const sprite = $('boss-sprite');
+        sprite.classList.remove('hit');
+        void sprite.offsetWidth;
+        sprite.classList.add('hit');
+        const dmg = document.createElement('div');
+        dmg.className = 'damage-float';
+        dmg.textContent = '-' + BOSS_DAMAGE;
+        $('boss-container').appendChild(dmg);
+        setTimeout(() => dmg.remove(), 1000);
+      }
+
+      function applyAnswer(state, groupId, correct, fromTeacher) {
+        const qi = state.currentQuestionIndex;
+        const key = qi + '_' + groupId;
+        if (state.submissions[key]) return;
+
+        const group = state.groups.find(g => g.id === groupId);
+        if (!group || group.eliminated) return;
+
+        const q = state.questions[qi];
+        state.submissions[key] = { correct, at: Date.now() };
+
+        if (correct) {
+          group.score += SCORE_CORRECT;
+          group.correctCount++;
+          state.bossHp = Math.max(0, state.bossHp - BOSS_DAMAGE);
+          if (role === 'teacher') bossHitAnim();
+        } else {
+          group.lives = Math.max(0, group.lives - 1);
+          if (group.lives <= 0) {
+            group.eliminated = true;
+            toast(group.name + ' 生命值耗尽！');
+          }
+        }
+
+        setState(state);
+        renderTeacherGame(state);
+
+        if (state.bossHp <= 0) endGame(state, 'Boss 已被击败！');
+        else if (state.groups.every(g => g.eliminated)) endGame(state, '所有小组生命值耗尽');
+      }
+
+      function applyAnswerWithIndex(state, groupId, answerIndex) {
+        const qi = state.currentQuestionIndex;
+        const key = qi + '_' + groupId;
+        if (state.submissions[key]) return false;
+
+        const group = state.groups.find(g => g.id === groupId);
+        if (!group || group.eliminated) return false;
+
+        const correct = state.questions[qi].correct === answerIndex;
+        state.submissions[key] = { answer: answerIndex, correct, at: Date.now() };
+
+        if (correct) {
+          group.score += SCORE_CORRECT;
+          group.correctCount++;
+          state.bossHp = Math.max(0, state.bossHp - BOSS_DAMAGE);
+        } else {
+          group.lives = Math.max(0, group.lives - 1);
+          if (group.lives <= 0) group.eliminated = true;
+        }
+
+        setState(state);
+        if (state.bossHp <= 0) endGame(state, 'Boss 已被击败！');
+        else if (state.groups.every(g => g.eliminated)) endGame(state, '所有小组生命值耗尽');
+        return true;
+      }
+
+      function submitStudentAnswer(state, answerIndex, btn) {
+        if (state.phase !== 'playing' || state.answerRevealed) return;
+        const g = state.groups.find(x => x.id === studentGroupId);
+        if (!g || g.eliminated) return;
+
+        const qi = state.currentQuestionIndex;
+        if (getSubmission(state, qi, studentGroupId)) return;
+
+        const fresh = getState(roomCode);
+        if (!fresh) return;
+        if (!applyAnswerWithIndex(fresh, studentGroupId, answerIndex)) return;
+
+        studentAnsweredQ = qi;
+        $('student-answered-hint').classList.remove('hidden');
+        document.querySelectorAll('#student-options .option-btn').forEach(b => b.disabled = true);
+        btn.classList.add(fresh.submissions[qi + '_' + studentGroupId]?.correct ? 'correct' : 'wrong');
+        onStateUpdate();
+      }
+
+      $('btn-start-game').addEventListener('click', () => {
+        const state = getState();
+        if (!state) return;
+        state.phase = 'playing';
+        state.timerStartedAt = Date.now();
+        state.timeLeft = GAME_DURATION;
+        state.currentQuestionIndex = 0;
+        state.answerRevealed = false;
+        state.submissions = {};
+        setState(state);
+        startTimer();
+        renderTeacherGame(state);
+        toast('游戏开始！');
+      });
+
+      $('btn-next-question').addEventListener('click', () => {
+        const state = getState();
+        if (!state || state.phase !== 'playing') return;
+        if (state.currentQuestionIndex < state.questions.length - 1) {
+          state.currentQuestionIndex++;
+          state.answerRevealed = false;
+          setState(state);
+          renderTeacherGame(state);
+        } else {
+          toast('已是最后一题');
+        }
+      });
+
+      $('btn-reveal-answer').addEventListener('click', () => {
+        const state = getState();
+        if (!state) return;
+        state.answerRevealed = true;
+        setState(state);
+        renderTeacherGame(state);
+      });
+
+      $('teacher-end-early').addEventListener('click', () => {
+        const state = getState();
+        if (state && state.phase === 'playing') endGame(state, '教师提前结束游戏');
+        else if (state && state.phase === 'lobby') goHome();
+      });
+
+      function endGame(state, reason) {
+        state.phase = 'ended';
+        state.endReason = reason;
+        state.timeLeft = 0;
+        stopTimer();
+        setState(state);
+        renderTeacherGame(state);
+        if (role === 'student') renderStudentGame(state);
+      }
+
+      function startTimer() {
+        stopTimer();
+        timerInterval = setInterval(() => {
+          const state = getState();
+          if (!state || state.phase !== 'playing') { stopTimer(); return; }
+
+          if (state.timerStartedAt) {
+            const elapsed = Math.floor((Date.now() - state.timerStartedAt) / 1000);
+            state.timeLeft = Math.max(0, GAME_DURATION - elapsed);
+          } else {
+            state.timeLeft = Math.max(0, state.timeLeft - 1);
+          }
+
+          if (state.timeLeft <= 0) {
+            state.timeLeft = 0;
+            setState(state);
+            stopTimer();
+            endGame(state, '时间到！');
+            return;
+          }
+          setState(state);
+          if (role === 'teacher') {
+            updateTimerUI(state, 'timer-display');
+          }
+        }, 1000);
+      }
+
+      function stopTimer() {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      }
+
+      // ── 学生：加入 ──
+      $('join-room-code').addEventListener('input', () => {
+        const code = $('join-room-code').value.trim();
+        const sel = $('join-group-select');
+        sel.innerHTML = '<option value="">— 加载中 —</option>';
+        if (code.length !== 4) {
+          sel.innerHTML = '<option value="">— 请输入 4 位房间号 —</option>';
+          return;
+        }
+        const state = getState(code);
+        if (!state) {
+          sel.innerHTML = '<option value="">— 房间不存在 —</option>';
+          return;
+        }
+        sel.innerHTML = state.groups.map(g =>
+          '<option value="' + g.id + '">' + escapeHtml(g.name) + (g.eliminated ? ' (已淘汰)' : '') + '</option>'
+        ).join('');
+      });
+
+      $('btn-join-room').addEventListener('click', () => {
+        const code = $('join-room-code').value.trim();
+        const gid = $('join-group-select').value;
+        if (code.length !== 4) { toast('请输入 4 位房间号'); return; }
+        if (!gid) { toast('请选择小组'); return; }
+        const state = getState(code);
+        if (!state) { toast('房间不存在，请确认房间号'); return; }
+
+        roomCode = code;
+        studentGroupId = gid;
+        role = 'student';
+        initChannel(code);
+        $('student-room-code').textContent = code;
+        const g = state.groups.find(x => x.id === gid);
+        $('student-group-label').textContent = g ? g.name : '';
+        $('student-wait-group').textContent = '已加入：' + (g?.name || '');
+        showScreen('screen-student-game');
+        startPolling();
+        renderStudentGame(state);
+      });
+
+      function startPolling() {
+        stopPolling();
+        pollTimer = setInterval(onStateUpdate, 400);
+        window.addEventListener('storage', onStorageEvent);
+      }
+
+      function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        window.removeEventListener('storage', onStorageEvent);
+      }
+
+      function onStorageEvent(e) {
+        if (e.key === storageKey(roomCode)) onStateUpdate();
+      }
+
+      function onStateUpdate() {
+        const state = getState();
+        if (!state) return;
+
+        if (role === 'teacher') {
+          renderTeacherGame(state);
+          if (state.phase === 'playing' && !timerInterval) startTimer();
+        } else if (role === 'student') {
+          renderStudentGame(state);
+        }
+      }
+
+      function renderStudentGame(state) {
+        updateBossUI(state, 'student');
+        updateTimerUI(state, 'student-timer');
+        $('student-boss-name').textContent = state.bossName;
+
+        const g = state.groups.find(x => x.id === studentGroupId);
+        if (g) {
+          $('student-hearts').innerHTML = renderHearts(g.lives);
+          $('student-group-label').textContent = g.name;
+        }
+
+        const eliminated = g?.eliminated;
+        $('student-eliminated').classList.toggle('hidden', !eliminated);
+        $('student-play').classList.toggle('hidden', state.phase !== 'playing' || eliminated);
+        $('student-waiting').classList.toggle('hidden', state.phase !== 'lobby');
+
+        if (state.phase === 'playing' && !eliminated) {
+          const qi = state.currentQuestionIndex;
+          if (qi !== studentSeenQi) {
+            studentSeenQi = qi;
+            studentAnsweredQ = -1;
+            $('student-answered-hint').classList.add('hidden');
+          }
+          if (getSubmission(state, qi, studentGroupId)) studentAnsweredQ = qi;
+          renderCurrentQuestion(state, 'student');
+        }
+
+        if (state.phase === 'ended') {
+          $('student-play').classList.add('hidden');
+          $('student-waiting').classList.add('hidden');
+          showLeaderboard(state);
+        }
+      }
+
+      // ── 排行榜 ──
+      function showLeaderboard(state) {
+        const sorted = [...state.groups].sort((a, b) => b.score - a.score || b.correctCount - a.correctCount);
+        const medals = ['🥇', '🥈', '🥉'];
+        const list = $('leaderboard-list');
+        list.innerHTML = '';
+        sorted.forEach((g, i) => {
+          const li = document.createElement('li');
+          li.className = i < 3 ? 'rank-' + (i + 1) : '';
+          li.innerHTML =
+            '<span class="rank">' + (medals[i] || (i + 1)) + '</span>' +
+            '<span class="name">' + escapeHtml(g.name) + '</span>' +
+            '<span class="pts">' + g.score + ' 分</span>';
+          list.appendChild(li);
+        });
+        $('end-reason-text').textContent = state.endReason || '游戏结束';
+        $('leaderboard-modal').classList.remove('hidden');
+      }
+
+      $('btn-close-leaderboard').addEventListener('click', () => {
+        $('leaderboard-modal').classList.add('hidden');
+      });
+
+      // 初始化示例题目
+      localQuestions = [
+        {
+          text: '1 + 1 = ?',
+          options: ['1', '2', '3', '4'],
+          correct: 1
+        },
+        {
+          text: '中国的首都是？',
+          options: ['上海', '北京', '广州', '深圳'],
+          correct: 1
+        },
+        {
+          text: '一年有多少个月？',
+          options: ['10', '11', '12', '13'],
+          correct: 2
+        }
+      ];
+      renderQuestionList();
+      renderGroupNameInputs();
+    })();
+  </script>
+</body>
+</html>
