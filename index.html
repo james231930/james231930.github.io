@@ -810,21 +810,26 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
       /** 教师创建房间：向 rooms 表插入 room_id + status=waiting（可选 game_state） */
       async function createSupabaseRoom(roomId, gameState) {
-        if (gameState) {
-          const payload = {
-            room_id: roomId,
-            status: 'waiting',
-            game_state: typeof gameState === 'string' ? gameState : JSON.stringify(gameState)
-          };
-          const { error } = await supabaseClient.from('rooms').insert(payload);
-          if (!error) return;
-          if (error.code !== 'PGRST204' && error.code !== '42703') throw error;
-        }
-        const { error } = await supabaseClient.from('rooms').insert({
+        const payload = {
           room_id: roomId,
           status: 'waiting'
-        });
-        if (error) throw error;
+        };
+        if (gameState !== undefined) {
+          payload.game_state = typeof gameState === 'string' ? gameState : JSON.stringify(gameState);
+        }
+
+        const { error } = await supabaseClient.from('rooms').insert(payload);
+        if (error) {
+          if (error.code === '42703' || (error.details && error.details.includes('game_state'))) {
+            const { error: fallbackError } = await supabaseClient.from('rooms').insert({
+              room_id: roomId,
+              status: 'waiting'
+            });
+            if (fallbackError) throw fallbackError;
+            return;
+          }
+          throw error;
+        }
       }
 
       /** 学生加入：查询 room_id 存在且 status=waiting */
@@ -843,7 +848,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         const { data, error } = await supabaseClient
           .from('rooms')
           .select('room_id')
-          .eq('status', 'waiting');
+          .eq('status', 'waiting')
+          .order('room_id', { ascending: true });
         if (error) throw error;
         return data || [];
       }
